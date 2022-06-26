@@ -85,6 +85,8 @@ fn drink_action_system(
 }
 ```
 
+Actions are composable in order to enable more advanced functionality. For example, actions can be composed of multiple [`Steps`](actions::Steps) in series, or can be run [`Concurrently`](actions::Concurrently). See the [Documentation](https://docs.rs/big-brain/latest/big_brain/actions/index.html) for more details.
+
 #### Thinkers
 
 Finally, you can use it when define the [`Thinker`](thinker::Thinker), which you can attach as a
