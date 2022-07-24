@@ -2,12 +2,12 @@
 Thinkers are the "brain" of an entity. You attach Scorers to it, and the Thinker picks the right Action to run based on the resulting Scores.
 */
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    utils::{Duration, Instant},
+};
 
 use crate::{
     actions::{self, ActionBuilder, ActionBuilderWrapper, ActionState},
@@ -19,13 +19,13 @@ use crate::{
 /**
 Wrapper for Actor entities. In terms of Scorers, Thinkers, and Actions, this is the [`Entity`] actually _performing_ the action, rather than the entity a Scorer/Thinker/Action is attached to. Generally, you will use this entity when writing Queries for Action and Scorer systems.
  */
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Component, Copy)]
 pub struct Actor(pub Entity);
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Component, Copy)]
 pub(crate) struct ActionEnt(pub Entity);
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Component, Copy)]
 pub(crate) struct ScorerEnt(pub Entity);
 
 /**
@@ -50,7 +50,7 @@ pub fn init_entities(mut cmd: Commands) {
 }
 ```
  */
-#[derive(Debug)]
+#[derive(Component, Debug)]
 pub struct Thinker {
     picker: Arc<dyn Picker>,
     otherwise: Option<ActionBuilderWrapper>,
@@ -70,7 +70,7 @@ impl Thinker {
 /**
 This is what you actually use to configure Thinker behavior. It's a plain old [`ActionBuilder`], as well.
  */
-#[derive(Debug, Default)]
+#[derive(Component, Debug, Default)]
 pub struct ThinkerBuilder {
     picker: Option<Arc<dyn Picker>>,
     otherwise: Option<ActionBuilderWrapper>,
@@ -144,7 +144,7 @@ pub fn thinker_component_attach_system(
     q: Query<(Entity, &ThinkerBuilder), Without<HasThinker>>,
 ) {
     for (entity, thinker_builder) in q.iter() {
-        let thinker = thinker_builder.attach(&mut cmd, entity);
+        let thinker = thinker_builder.spawn_action(&mut cmd, entity);
         cmd.entity(entity).insert(HasThinker(thinker));
     }
 }
@@ -172,7 +172,7 @@ pub fn actor_gone_cleanup(
     }
 }
 
-#[derive(Debug)]
+#[derive(Component, Debug)]
 pub struct HasThinker(Entity);
 
 pub struct ThinkerIterations {
@@ -241,13 +241,8 @@ pub fn thinker_system(
                     // Think about what action we're supposed to be taking. We do this
                     // every tick, because we might change our mind.
                     // ...and then execute it (details below).
-                    exec_picked_action(
-                        &mut cmd,
-                        *actor,
-                        &mut thinker,
-                        &choice.action,
-                        &mut action_states,
-                    );
+                    let action = choice.action.clone();
+                    exec_picked_action(&mut cmd, *actor, &mut thinker, &action, &mut action_states);
                 } else if let Some(default_action_ent) = &thinker.otherwise {
                     // Otherwise, let's just execute the default one! (if it's there)
                     let default_action_ent = default_action_ent.clone();
@@ -258,23 +253,6 @@ pub fn thinker_system(
                         &default_action_ent,
                         &mut action_states,
                     );
-                } else if let Some(current) = &mut thinker.current_action {
-                    // If we didn't pick anything, and there's no default action,
-                    // we need to see if there's any action currently executing,
-                    // and cancel it. We also use this opportunity to clean up
-                    // stale action components so they don't slow down joins.
-                    let mut state = action_states.get_mut(current.0.0).expect("Couldn't find a component corresponding to the current action. This is definitely a bug.");
-                    match *state {
-                        actions::ActionState::Init
-                        | actions::ActionState::Success
-                        | actions::ActionState::Failure => {
-                            cmd.entity(current.0 .0).despawn_recursive();
-                            thinker.current_action = None;
-                        }
-                        _ => {
-                            *state = ActionState::Cancelled;
-                        }
-                    }
                 }
             }
         }
@@ -322,7 +300,7 @@ fn exec_picked_action(
                     // Despawn the action itself.
                     cmd.entity(action_ent.0).despawn_recursive();
                     thinker.current_action = Some((
-                        ActionEnt(picked_action.1.attach(cmd, actor)),
+                        ActionEnt(picked_action.1.spawn_action(cmd, actor)),
                         picked_action.clone(),
                     ));
                 }
@@ -343,7 +321,7 @@ fn exec_picked_action(
         // current_action in the thinker. The logic here is pretty
         // straightforward -- we set the action, Request it, and
         // that's it.
-        let new_action = picked_action.1.attach(cmd, actor);
+        let new_action = picked_action.1.spawn_action(cmd, actor);
         thinker.current_action = Some((ActionEnt(new_action), picked_action.clone()));
     }
 }

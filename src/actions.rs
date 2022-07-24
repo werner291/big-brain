@@ -10,7 +10,8 @@ use crate::thinker::{ActionEnt, Actor};
 /**
 The current state for an Action.
 */
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Component, Eq, PartialEq)]
+#[component(storage = "SparseSet")]
 pub enum ActionState {
     /**
     Initial state. No action should be performed.
@@ -63,18 +64,34 @@ impl ActionBuilderWrapper {
 }
 
 /**
-Trait that must be defined by types in order to be `ActionBuilder`s. `ActionBuilder`s' job is to spawn new `Action` entities. In general, most of this is already done for you, and the only method you really have to implement is `.build()`.
+Trait that must be defined by types in order to be `ActionBuilder`s. `ActionBuilder`s' job is to spawn new `Action` entities on demand. In general, most of this is already done for you, and the only method you really have to implement is `.build()`.
 
 The `build()` method MUST be implemented for any `ActionBuilder`s you want to define.
 */
 pub trait ActionBuilder: std::fmt::Debug + Send + Sync {
     /**
-    MUST insert your concrete Action component into the `action` [`Entity`], using `cmd`. You _may_ use `actor`, but it's perfectly normal to just ignore it.
+
+    MUST insert your concrete Action component into the Scorer [`Entity`], using
+     `cmd`. You _may_ use `actor`, but it's perfectly normal to just ignore it.
+
+    Note that this method is automatically implemented for any Components that
+    implement Clone, so you don't need to define it yourself unless you want
+    more complex parameterization of your Actions.
 
     ### Example
 
+    Using `Clone` (the easy way):
+
+    ```no_run
+    #[derive(Debug, Clone, Component)]
+    struct MyAction;
+    ```
+
+    Implementing it manually:
+
     ```no_run
     struct MyBuilder;
+    #[derive(Debug, Component)]
     struct MyAction;
 
     impl ActionBuilder for MyBuilder {
@@ -86,10 +103,9 @@ pub trait ActionBuilder: std::fmt::Debug + Send + Sync {
     */
     fn build(&self, cmd: &mut Commands, action: Entity, actor: Entity);
 
-    /**
-    Don't implement this yourself unless you know what you're doing.
-     */
-    fn attach(&self, cmd: &mut Commands, actor: Entity) -> Entity {
+    #[doc(hidden)]
+    // Don't implement this yourself unless you know what you're doing.
+    fn spawn_action(&self, cmd: &mut Commands, actor: Entity) -> Entity {
         let action_ent = ActionEnt(cmd.spawn().id());
         cmd.entity(action_ent.0)
             .insert(Name::new("Action"))
@@ -97,6 +113,15 @@ pub trait ActionBuilder: std::fmt::Debug + Send + Sync {
             .insert(Actor(actor));
         self.build(cmd, action_ent.0, actor);
         action_ent.0
+    }
+}
+
+impl<T> ActionBuilder for T
+where
+    T: Component + Clone + std::fmt::Debug + Send + Sync,
+{
+    fn build(&self, cmd: &mut Commands, action: Entity, _actor: Entity) {
+        cmd.entity(action).insert(T::clone(self));
     }
 }
 
@@ -121,7 +146,7 @@ impl StepsBuilder {
 impl ActionBuilder for StepsBuilder {
     fn build(&self, cmd: &mut Commands, action: Entity, actor: Entity) {
         if let Some(step) = self.steps.get(0) {
-            let child_action = step.attach(cmd, actor);
+            let child_action = step.spawn_action(cmd, actor);
             cmd.entity(action)
                 .insert(Name::new("Steps Action"))
                 .insert(Steps {
@@ -129,6 +154,8 @@ impl ActionBuilder for StepsBuilder {
                     active_ent: ActionEnt(child_action),
                     steps: self.steps.clone(),
                 })
+                .insert(Transform::default())
+                .insert(GlobalTransform::default())
                 .push_children(&[child_action]);
         }
     }
@@ -144,12 +171,12 @@ Thinker::build()
     .when(
         MyScorer,
         Steps::build()
-            .step(MyAction::build())
-            .step(MyNextAction::build())
+            .step(MyAction)
+            .step(MyNextAction)
         )
 ```
 */
-#[derive(Debug)]
+#[derive(Component, Debug)]
 pub struct Steps {
     steps: Vec<Arc<dyn ActionBuilder>>,
     active_step: usize,
@@ -175,17 +202,16 @@ pub fn steps_system(
 ) {
     use ActionState::*;
     for (seq_ent, Actor(actor), mut steps_action) in steps_q.iter_mut() {
-        let current_state = states.get_mut(seq_ent).expect("uh oh").clone();
+        let active_ent = steps_action.active_ent.0;
+        let current_state = states.get_mut(seq_ent).unwrap().clone();
         match current_state {
             Requested => {
                 // Begin at the beginning
-                let mut step_state = states.get_mut(steps_action.active_ent.0).expect("oops");
-                *step_state = Requested;
-                let mut current_state = states.get_mut(seq_ent).expect("uh oh");
-                *current_state = Executing;
+                *states.get_mut(active_ent).unwrap() = Requested;
+                *states.get_mut(seq_ent).unwrap() = Executing;
             }
             Executing => {
-                let mut step_state = states.get_mut(steps_action.active_ent.0).expect("bug");
+                let mut step_state = states.get_mut(active_ent).unwrap();
                 match *step_state {
                     Init => {
                         // Request it! This... should not really happen? But just in case I'm missing something... :)
@@ -214,17 +240,20 @@ pub fn steps_system(
 
                         steps_action.active_step += 1;
                         let step_builder = steps_action.steps[steps_action.active_step].clone();
-                        let step_ent = step_builder.attach(&mut cmd, *actor);
+                        let step_ent = step_builder.spawn_action(&mut cmd, *actor);
                         cmd.entity(seq_ent).push_children(&[step_ent]);
-                        let mut step_state = states.get_mut(step_ent).expect("oops");
-                        *step_state = ActionState::Requested;
+                        steps_action.active_ent.0 = step_ent;
                     }
                 }
             }
             Cancelled => {
                 // Cancel current action
-                let mut step_state = states.get_mut(steps_action.active_ent.0).expect("oops");
-                *step_state = ActionState::Cancelled;
+                let mut step_state = states.get_mut(active_ent).expect("oops");
+                if *step_state == Requested || *step_state == Executing {
+                    *step_state = Cancelled;
+                } else if *step_state == Failure || *step_state == Success {
+                    *states.get_mut(seq_ent).unwrap() = step_state.clone();
+                }
             }
             Init | Success | Failure => {
                 // Do nothing.
@@ -234,7 +263,7 @@ pub fn steps_system(
 }
 
 /**
-[`ActionBuilder`] for the [`Concurrent`] component. Constructed through `Concurrent::build()`.
+[`ActionBuilder`] for the [`Concurrently`] component. Constructed through `Concurrently::build()`.
 */
 #[derive(Debug)]
 pub struct ConcurrentlyBuilder {
@@ -256,10 +285,12 @@ impl ActionBuilder for ConcurrentlyBuilder {
         let children: Vec<Entity> = self
             .actions
             .iter()
-            .map(|action| action.attach(cmd, actor))
+            .map(|action| action.spawn_action(cmd, actor))
             .collect();
         cmd.entity(action)
             .insert(Name::new("Concurrent Action"))
+            .insert(Transform::default())
+            .insert(GlobalTransform::default())
             .push_children(&children[..])
             .insert(Concurrently {
                 actions: children.into_iter().map(ActionEnt).collect(),
@@ -277,19 +308,19 @@ Thinker::build()
     .when(
         MyScorer,
         Concurrent::build()
-            .push(MyAction::build())
-            .push(MyOtherAction::build())
+            .push(MyAction)
+            .push(MyOtherAction)
         )
 ```
 */
-#[derive(Debug)]
+#[derive(Component, Debug)]
 pub struct Concurrently {
     actions: Vec<ActionEnt>,
 }
 
 impl Concurrently {
     /**
-    Construct a new [`ConcurrentBuilder`] to define the actions to take.
+    Construct a new [`ConcurrentlyBuilder`] to define the actions to take.
     */
     pub fn build() -> ConcurrentlyBuilder {
         ConcurrentlyBuilder {
@@ -299,7 +330,7 @@ impl Concurrently {
 }
 
 /**
-System that takes care of executing any existing [`Concurrent`] Actions.
+System that takes care of executing any existing [`Concurrently`] Actions.
 */
 pub fn concurrent_system(
     concurrent_q: Query<(Entity, &Concurrently)>,
@@ -350,8 +381,9 @@ pub fn concurrent_system(
                             }
                         }
                     }
+                    let mut state_var = states_q.get_mut(seq_ent).expect("uh oh");
+                    *state_var = Failure;
                 }
-
             }
             Cancelled => {
                 // Cancel all actions

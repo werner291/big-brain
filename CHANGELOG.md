@@ -1,3 +1,77 @@
+# `big-brain` Release Changelog
+
+<a name="0.11.0"></a>
+## 0.11.0 (2022-05-05)
+
+### Features
+
+* **deps:** upgrade to Bevy 0.7. (#37) ([38688789](https://github.com/zkat/big-brain/commit/38688789d08547e1cbc0d2a373fc58af39dea360))
+
+<a name="0.10.0"></a>
+## 0.10.0 (2022-01-15)
+
+This is my first pass at a significant API improvement. I iterated on it for a
+while and this is what I settled on. I look forward to continuing to evolve
+this API as I get more feedback and experience with it! Please let me know
+what you think!
+
+### Breaking Changes
+
+* **thinker:** stop cancelling actions when they go under Picker thresholds ([4c72b3d1](https://github.com/zkat/big-brain/commit/4c72b3d11eaa42af4b99ccf9ea729306e589ada8))
+* **stages:** Strongly typed stages for BigBrainPlugin ([65ca646e](https://github.com/zkat/big-brain/commit/65ca646e3b92b178025591878e2df6a08714880f))
+* **builders:** Blanket impls for ActionBuilder and ScorerBuilder when Clone ([8bed75b5](https://github.com/zkat/big-brain/commit/8bed75b54a43c72b53fbf9e2605b942cb2c53214))
+* **api:** rename attach and hide it from docs ([6c64df4f](https://github.com/zkat/big-brain/commit/6c64df4fc1211abe19919a3628476b930b6e9919))
+* **choice:** return &Choice instead of cloning ([a76dcbb6](https://github.com/zkat/big-brain/commit/a76dcbb67d4f6ae402f03d22e8d526408d8d875f))
+
+### Features
+
+* **example:** update thirst example ([edecc4c9](https://github.com/zkat/big-brain/commit/edecc4c95f76bcd69c042372140486f744f4ccea))
+
+### Bug Fixes
+
+* **hierarchy:** make sure all the hierarchy stuff is set up properly ([372c13e2](https://github.com/zkat/big-brain/commit/372c13e207523ec919c6490682f628f7d21cebea))
+* **tests:** update tests ([94e1b1f6](https://github.com/zkat/big-brain/commit/94e1b1f685e6ab0be9d90bae5dfbd648ba87f1de))
+
+<a name="0.9.0"></a>
+## 0.9.0 (2022-01-09)
+
+### Features
+
+* **deps:** update for bevy 0.6 (#31) ([b97f9273](https://github.com/zkat/big-brain/commit/b97f9273c5f5eceb010d8fa2b23abb534fb2cee1))
+* **perf:** Use SparseSet for ActionState ([5fc08176](https://github.com/zkat/big-brain/commit/5fc081765c1ed8788a7a5d1e940efbc66dc8aa8f))
+
+<a name="0.8.0"></a>
+## 0.8.0 (2021-09-19)
+
+### Bug Fixes
+
+* **systems:** Fix steps, add a test and explicit systems ordering (#27) ([f33315c9](https://github.com/zkat/big-brain/commit/f33315c9b7b769a94baab17e3a9df9f5ebe924d2)) (credit: [@payload](https://github.com/payload))
+
+<a name="0.7.0"></a>
+## 0.7.0 (2021-09-16)
+
+### Bug Fixes
+
+* **deps:** Don't include Bevy default features when used as a dependency. (#25) ([61558137](https://github.com/zkat/big-brain/commit/615581370a165645795966ac7c878ff492630ba2))
+
+### Features
+
+* **license:** change license to Apache-2.0 ([d7d17772](https://github.com/zkat/big-brain/commit/d7d177729476af8ec1463d8957a35092a336098a))
+    * **BREAKING CHANGE**: This is a significant licensing change. Please review.
+
+<a name="0.6.0"></a>
+## 0.6.0 (2021-05-20)
+
+#### Features
+
+* **pickers:**  Make choices mod public (#23) ([92034cd0](https://github.com/zkat/big-brain/commit/92034cd04e629723893cfcd7730ce597083da9e7))
+* **scorers:**  Added EvaluatingScorer (#24) ([1a1d5b3d](https://github.com/zkat/big-brain/commit/1a1d5b3d17d96a51084418128f0bfebe0ad8c702))
+
+#### Bug Fixes
+
+* **actions:**  Concurrently was not setting its state to Failure ([d4a689f6](https://github.com/zkat/big-brain/commit/d4a689f6c60f509a71fb3a9ae4ca49dad263acab))
+
+
 <a name="0.5.0"></a>
 ## 0.5.0 (2021-04-27)
 
